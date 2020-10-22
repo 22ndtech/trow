@@ -52,6 +52,7 @@ pub mod types;
 
 #[cfg(feature = "sqlite")]
 mod users;
+mod registry_interface;
 
 use chrono::Utc;
 use client_interface::ClientInterface;
