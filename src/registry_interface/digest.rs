@@ -192,7 +192,7 @@ pub fn parse(component: &str) -> Result<Digest, RepositoryError> {
 
 #[cfg(test)]
 mod test {
-    use crate::storage::digest::{sha256_digest, sha256_tag_digest, Digest, DigestAlgorithm};
+    use crate::registry_interface::digest::{sha256_digest, sha256_tag_digest, Digest, DigestAlgorithm};
     use std::io::BufReader;
 
     #[test]

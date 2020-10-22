@@ -2,16 +2,18 @@ pub mod trow_proto {
     include!("../lib/protobuf/out/trow.rs");
 }
 
+use tokio::runtime::Runtime;
 use trow_proto::{
     admission_controller_client::AdmissionControllerClient, registry_client::RegistryClient,
     BlobRef, CatalogRequest, CompleteRequest, HealthRequest, ListTagsRequest,
     ManifestHistoryRequest, ManifestRef, MetricsRequest, ReadinessRequest, UploadRef,
     UploadRequest, VerifyManifestRequest,
 };
+use crate::registry_interface::manifest::Manifest;
 
 use tonic::Request;
 
-use crate::chrono::TimeZone;
+use crate::{chrono::TimeZone, registry_interface::{BlobStorage, ManifestStorage, RegistryStorage, StorageDriverError, TagStorage}};
 use crate::types::{self, *};
 use failure::Error;
 use serde_json::Value;
@@ -49,6 +51,102 @@ fn extract_images<'a>(blob: &Value, images: &'a mut Vec<String>) -> &'a Vec<Stri
         _ => (),
     }
     images
+}
+
+impl RegistryStorage for ClientInterface {
+    fn exists(&self, name: &String) -> Result<bool, StorageDriverError> {
+        todo!()
+    }
+
+    fn support_streaming(&self) -> bool {
+        todo!()
+    }
+
+}
+
+impl TagStorage for ClientInterface {
+
+    fn tags(&self, name: &str) -> crate::registry_interface::tag::Tags {
+        todo!()
+    }
+
+    fn add_tag(&self, name: &str, digest: &str) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+
+    fn link_tag(&self, name: &str, tag: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, hash: &str, manifest: &crate::registry_interface::manifest::Manifest) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+}
+
+impl ManifestStorage for ClientInterface {
+
+    fn get_manifest(&self, name: &str, tag: &str) -> Result<Manifest, StorageDriverError> {
+
+        let mut rt = Runtime::new().unwrap();
+        let rn = RepoName(name.to_string());
+        let f = self.get_reader_for_manifest(&rn, tag);
+        let mr = rt.block_on(f).map_err(|e| StorageDriverError{details: format!("{:?}", e)})?;
+
+        let mut buffer = Vec::new();
+        mr.get_reader().read_to_end(&mut buffer).map_err(|e| StorageDriverError{details: format!("{:?}", e)})?;
+
+        rt.block_on(Manifest::from_bytes(buffer)).map_err(|e| StorageDriverError{details: format!("{:?}", e)})
+    }
+
+    fn store_manifest(&self, name: &str, tag: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, hash: &str, data: &[u8]) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+
+    fn store_manifest_with_writer(&self, name: &str, tag: &str) -> Result<Box<dyn Write>, StorageDriverError> {
+        todo!()
+    }
+
+    fn delete_manifest(&self, name: &str, reference: &str, digest: Option<crate::registry_interface::digest::Digest>) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+
+    fn has_manifest(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> bool {
+        todo!()
+    }
+}
+
+impl BlobStorage for ClientInterface {
+    fn get_blob(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> Result<Vec<u8>, StorageDriverError> {
+        todo!()
+    }
+
+    fn delete_blob(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+
+    fn start_blob_upload(&self, name: &str, session_id: &str) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+
+    fn status_blob_upload(&self, name: &str, session_id: &str) -> crate::registry_interface::file::FileInfo {
+        todo!()
+    }
+
+    fn store_blob(&self, name: &str, session_id: &str, data: &[u8]) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+
+    fn store_blob_with_writer(&self, _name: &str, session_id: &str) -> Result<Box<dyn Write>, StorageDriverError> {
+        todo!()
+    }
+
+    fn end_blob_upload(&self, name: &str, session_id: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> Result<Vec<u8>, StorageDriverError> {
+        todo!()
+    }
+
+    fn cancel_blob_upload(&self, name: &str, session_id: &str) -> Result<(), StorageDriverError> {
+        todo!()
+    }
+
+    fn has_blob(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> crate::registry_interface::file::FileInfo {
+        todo!()
+    }
 }
 
 impl ClientInterface {

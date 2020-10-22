@@ -47,6 +47,10 @@ impl Manifest {
     pub async fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap()
     }
+    pub fn to_json_blocking(&self) -> String {
+        serde_json::to_string(self).unwrap()
+    }
+
     // Parse bytes to Manifest
     pub async fn from_bytes(bytes: Vec<u8>) -> Result<Manifest, APIRegistryError> {
         serde_json::from_reader(bytes.as_slice())
@@ -67,8 +71,8 @@ impl Manifest {
 #[cfg(test)]
 mod test {
     use crate::serde_json::Result;
-    use crate::storage::manifest::Manifest;
-    use crate::storage::media::MediaType;
+    use crate::registry_interface::manifest::Manifest;
+    use crate::registry_interface::media::MediaType;
 
     #[test]
     fn manifest_basic() {

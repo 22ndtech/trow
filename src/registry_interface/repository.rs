@@ -98,7 +98,7 @@ pub fn new(name: &str) -> Result<Repository, RepositoryError> {
 
 #[cfg(test)]
 mod test {
-    use crate::storage::digest::DigestAlgorithm;
+    use crate::registry_interface::digest::DigestAlgorithm;
 
     #[test]
     fn repository_no_tag_test() {
