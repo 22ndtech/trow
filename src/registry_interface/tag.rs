@@ -115,7 +115,7 @@ pub fn new(component: &str) -> Result<Tag, RepositoryError> {
 
 #[cfg(test)]
 mod test {
-    use crate::storage::digest::DigestAlgorithm;
+    use crate::registry_interface::digest::DigestAlgorithm;
 
     #[test]
     fn tag_simple() {

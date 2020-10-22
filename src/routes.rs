@@ -1,4 +1,4 @@
-use crate::client_interface::ClientInterface;
+use crate::{client_interface::ClientInterface, registry_interface::{manifest::Manifest, ManifestStorage}};
 use crate::response::authenticate::Authenticate;
 use crate::response::errors::Error;
 use crate::response::html::HTML;
@@ -158,11 +158,9 @@ fn get_manifest(
     ci: rocket::State<ClientInterface>,
     onename: String,
     reference: String,
-) -> Result<ManifestReader, Error> {
-    let rn = RepoName(onename);
-    let f = ci.get_reader_for_manifest(&rn, &reference);
-    let mut rt = Runtime::new().unwrap();
-    rt.block_on(f)
+) -> Result<Manifest, Error> {
+    
+    ci.get_manifest(&onename, &reference)
         .map_err(|_| Error::ManifestUnknown(reference))
 }
 

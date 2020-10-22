@@ -80,8 +80,8 @@ impl Default for IndexPlatform {
 #[cfg(test)]
 mod test {
     use crate::serde_json::Result;
-    use crate::storage::index::Index;
-    use crate::storage::media::MediaType;
+    use crate::registry_interface::index::Index;
+    use crate::registry_interface::media::MediaType;
 
     #[test]
     fn index_basic() {
