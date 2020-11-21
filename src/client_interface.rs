@@ -81,17 +81,14 @@ impl TagStorage for ClientInterface {
 
 impl ManifestStorage for ClientInterface {
 
-    fn get_manifest(&self, name: &str, tag: &str) -> Result<Manifest, StorageDriverError> {
+    fn get_manifest(&self, name: &str, tag: &str) -> Result<ManifestReader, StorageDriverError> {
 
         let mut rt = Runtime::new().unwrap();
         let rn = RepoName(name.to_string());
         let f = self.get_reader_for_manifest(&rn, tag);
         let mr = rt.block_on(f).map_err(|e| StorageDriverError{details: format!("{:?}", e)})?;
 
-        let mut buffer = Vec::new();
-        mr.get_reader().read_to_end(&mut buffer).map_err(|e| StorageDriverError{details: format!("{:?}", e)})?;
-
-        rt.block_on(Manifest::from_bytes(buffer)).map_err(|e| StorageDriverError{details: format!("{:?}", e)})
+        Ok(mr)
     }
 
     fn store_manifest(&self, name: &str, tag: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, hash: &str, data: &[u8]) -> Result<(), StorageDriverError> {

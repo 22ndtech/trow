@@ -13,7 +13,6 @@ pub mod html;
 pub mod manifest_deleted;
 pub mod manifest_history;
 pub mod manifest_reader;
-pub mod manifest;
 pub mod metrics;
 pub mod readiness;
 pub mod repo_catalog;

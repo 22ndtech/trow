@@ -3092,7 +3092,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "sha2 0.9.1",
+ "sha2 0.9.2",
  "tokio",
  "tonic",
  "trow-protobuf",

@@ -1,4 +1,4 @@
-use crate::registry_interface::manifest::Manifest;
+use crate::{registry_interface::manifest::Manifest, types::ManifestReader};
 use crate::registry_interface::file::FileInfo;
 use crate::registry_interface::digest::{DigestAlgorithm, Digest};
 use std::io::Write;
@@ -80,9 +80,13 @@ pub trait TagStorage {
 pub trait ManifestStorage {
     /// Fetch the manifest identified by name and reference where reference can be a tag or digest.
     /// A HEAD request can also be issued to this endpoint to obtain resource information without receiving all data.
+    /// We return a reader object which will stream the bytes of the manifest. It's important *not* to serialize the
+    /// manifest as we must return the same bytes that were sent.
     /// GET: /v2/<name>/manifests/<reference>
     /// HEAD: /v2/<name>/manifests/<reference>
-    fn get_manifest(&self, name: &str, tag: &str) -> Result<Manifest>;
+    fn get_manifest(&self, name: &str, tag: &str) -> Result<ManifestReader>;
+
+    // Stores should take a reader that has the data, possibly a second method that returns byte array
 
     /// Put the manifest identified by name and reference where reference can be a tag or digest.
     /// PUT: /v2/<name>/manifests/<reference>

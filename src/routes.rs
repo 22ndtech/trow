@@ -158,7 +158,7 @@ fn get_manifest(
     ci: rocket::State<ClientInterface>,
     onename: String,
     reference: String,
-) -> Result<Manifest, Error> {
+) -> Result<ManifestReader, Error> {
     
     ci.get_manifest(&onename, &reference)
         .map_err(|_| Error::ManifestUnknown(reference))
