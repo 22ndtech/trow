@@ -1,7 +1,8 @@
 use crate::{registry_interface::manifest::Manifest, types::ManifestReader};
 use crate::registry_interface::file::FileInfo;
 use crate::registry_interface::digest::{DigestAlgorithm, Digest};
-use std::io::Write;
+use std::io::{Read, Write};
+use thiserror::Error;
 use crate::registry_interface::tag::Tags;
 
 pub mod digest;
@@ -21,32 +22,16 @@ pub mod tag_entry;
 //==================================================================================================\
 // Storage Driver Error
 type Result<T> = std::result::Result<T, StorageDriverError>;
-#[derive(Debug)]
-pub struct StorageDriverError {
-    pub details: String
-}
-
-// Display trait for the error
-impl std::fmt::Display for StorageDriverError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Storage driver error: {}", self.details)
-    }
-}
-
-impl std::error::Error for StorageDriverError {}
-
-impl StorageDriverError {
-    pub fn new(details: &str) -> StorageDriverError {
-        StorageDriverError {
-            details: details.to_string()
-        }
-    }
-
-    pub fn from(details: String) -> StorageDriverError {
-        StorageDriverError {
-            details
-        }
-    }
+#[derive(Error, Debug)]
+pub enum StorageDriverError {
+    #[error("the name `{0}` is not valid")]
+    InvalidName(String),
+    #[error("manifest is not valid")]
+    InvalidManifest,
+    #[error("Internal storage error `{0}`")]
+    InternalMsg(String),
+    #[error("Internal storage error")]
+    Internal,
 }
 
 //==================================================================================================
@@ -88,12 +73,15 @@ pub trait ManifestStorage {
 
     // Stores should take a reader that has the data, possibly a second method that returns byte array
 
-    /// Put the manifest identified by name and reference where reference can be a tag or digest.
-    /// PUT: /v2/<name>/manifests/<reference>
-    fn store_manifest(&self, name: &str, tag: &str, algo: &DigestAlgorithm, hash: &str, data: &[u8]) -> Result<()>;
+    /// Put the manifest identified by name and tag. (Note that manifests cannot be pushed by digest)
+    /// data is a link to reader for supplying the bytes of the manifest.
+    /// Returns digest of the manifest.
+    /// PUT: /v2/<name>/manifests/<tag>
+    fn store_manifest(&self, name: &str, tag: &str, data: &mut Box<dyn Read>) -> Result<Digest>;
 
-    /// Store a manifest via Writer trait for drivers which support it
-    fn store_manifest_with_writer(&self, name: &str, tag: &str) -> Result<Box<dyn Write>>;
+    // Store a manifest via Writer trait for drivers which support it
+    // AM: I think this was just for Trow, so we can remove, right?
+    //fn store_manifest_with_writer(&self, name: &str, tag: &str) -> Result<Box<dyn Write>>;
 
     /// Delete the manifest identified by name and reference. Note that a manifest can only be deleted by digest.
     /// DELETE: /v2/<name>/manifests/<reference>

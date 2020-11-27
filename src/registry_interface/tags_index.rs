@@ -45,7 +45,7 @@ impl TagsIndex {
     /// Parse bytes back to the Tags Index
     pub fn from_bytes(bytes: Vec<u8>) -> Result<TagsIndex, StorageDriverError> {
         serde_json::from_reader(bytes.as_slice())
-            .map_err(|_e|StorageDriverError::new("Could not deserialize tags index"))
+            .map_err(|_e|StorageDriverError::InternalMsg("Could not deserialize tags index".to_string()))
     }
 
     // Returns a list of tags
@@ -91,7 +91,7 @@ impl TagsIndex {
     // deletes the whole tag set based on the digest
     fn delete_tag_set(&self, digest: &str) -> Result<(), StorageDriverError>{
         let mut index = self.index.write()
-            .map_err(|_|StorageDriverError::new("Could get a guard lock to index"))?;
+            .map_err(|_|StorageDriverError::InternalMsg("Could get a guard lock to index".to_string()))?;
 
         index.remove_entry(digest);
 
@@ -101,7 +101,7 @@ impl TagsIndex {
     // retrieve the hashset of tags from the index based on the digest
     fn get_tag_set(&self, digest: &str) -> Result<HashSet<String>, StorageDriverError>{
         let index = self.index.read()
-            .map_err(|_|StorageDriverError::new("Could get a guard lock to index"))?;
+            .map_err(|_|StorageDriverError::InternalMsg("Could get a guard lock to index".to_string()))?;
 
         let tags = index.get(digest);
         match tags {
@@ -114,7 +114,7 @@ impl TagsIndex {
     // writes back the hash tag in the index
     fn write_tag_set(&self, digest: &str, tags_hash_set: HashSet<String>) -> Result<(), StorageDriverError>{
         let mut index = self.index.write()
-            .map_err(|_|StorageDriverError::new("Could get a guard lock to index"))?;
+            .map_err(|_|StorageDriverError::InternalMsg("Could get a guard lock to index".to_string()))?;
 
         index.insert(digest.to_string(), tags_hash_set);
 
@@ -126,7 +126,7 @@ impl TagsIndex {
     // writes back the tag entries in the tags
     fn write_tag_entries(&self, tag_name: &str, tag_entries: TagEntries) -> Result<(), StorageDriverError>{
         let mut tags = self.tags.write()
-            .map_err(|_|StorageDriverError::new("Could get a guard lock to tags"))?;
+            .map_err(|_|StorageDriverError::InternalMsg("Could get a guard lock to tags".to_string()))?;
 
         tags.insert(tag_name.to_string(), tag_entries);
 
@@ -135,7 +135,7 @@ impl TagsIndex {
 
     fn remove_tag(&self, name: &str) -> Result<(), StorageDriverError> {
         let mut tags = self.tags.write()
-            .map_err(|_|StorageDriverError::new("Could get a guard lock to tags"))?;
+            .map_err(|_|StorageDriverError::InternalMsg("Could get a guard lock to tags".to_string()))?;
 
         // remove the whole entry
         tags.remove(name);
@@ -163,7 +163,7 @@ impl TagsIndex {
     pub fn get_tag(&self, tag_or_digest: &str) -> Result<Option<TagEntries>, StorageDriverError> {
 
         let tags = self.tags.read()
-            .map_err(|_|StorageDriverError::new("Could get a guard lock to tags"))?;
+            .map_err(|_|StorageDriverError::InternalMsg("Could get a guard lock to tags".to_string()))?;
 
         let tag_entry = tags.get(tag_or_digest);
         if tag_entry.is_none() {
@@ -231,7 +231,7 @@ impl TagsIndex {
         let tags = self.get_tag(tag_or_digest)?;
 
         if tags.is_none() {
-            return Err(StorageDriverError::from(format!("Failed to retrieve tag for {} {}", self.name, tag_or_digest)));
+            return Err(StorageDriverError::InternalMsg(format!("Failed to retrieve tag for {} {}", self.name, tag_or_digest)));
         }
 
         // Delete the tag now
@@ -255,7 +255,7 @@ impl TagsIndex {
         let tags = self.tags.write();
 
         if tags.is_err() {
-            return Err(StorageDriverError::from(format!("Failed to read tag: {:#?}", tag)));
+            return Err(StorageDriverError::InternalMsg(format!("Failed to read tag: {:#?}", tag)));
         }
 
         let mut tags = tags.unwrap();
@@ -290,7 +290,7 @@ impl TagsIndex {
         if self.immutable {
             let details = format!("Name(space) {} is immutable. So the TAG {:#?} could not be added because there is already one", self.name, tag);
             log::warn!("{}", &details);
-            return Err(StorageDriverError::from(format!("Failed to insert tag: {:#?}", &tag)));
+            return Err(StorageDriverError::InternalMsg(format!("Failed to insert tag: {:#?}", &tag)));
         }
 
         // if we got here it means that we allow pushing tags with the same tag name

@@ -100,7 +100,6 @@ pub struct VerifiedManifest {
     repo_name: RepoName,
     digest: Digest,
     tag: String,
-    content_type: String,
 }
 
 impl VerifiedManifest {
@@ -115,23 +114,17 @@ impl VerifiedManifest {
     pub fn repo_name(&self) -> &RepoName {
         &self.repo_name
     }
-
-    pub fn content_type(&self) -> &str {
-        &self.content_type
-    }
 }
 
 pub fn create_verified_manifest(
     repo_name: RepoName,
     digest: Digest,
     tag: String,
-    content_type: String,
 ) -> VerifiedManifest {
     VerifiedManifest {
         repo_name,
         digest,
-        tag,
-        content_type,
+        tag
     }
 }
 

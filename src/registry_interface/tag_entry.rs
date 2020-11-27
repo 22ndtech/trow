@@ -128,20 +128,20 @@ impl TagEntries {
 
         // make sure the tag name is present
         if tag.name.is_empty() {
-            return Err(StorageDriverError::new("Tag name is empty"));
+            return Err(StorageDriverError::InternalMsg("Tag name is empty".to_string()));
         }
 
         // make sure the digest is present and valid
         if tag.digest.is_empty(){
-            return Err(StorageDriverError::new("Tag digest is empty"));
+            return Err(StorageDriverError::InternalMsg("Tag digest is empty".to_string()));
         }
 
         // Validate the digest now
-        digest::parse(&tag.digest).map_err(|_|StorageDriverError::from(format!("Trying to add the tag {} which has a malformed digest", tag.name)))?;
+        digest::parse(&tag.digest).map_err(|_|StorageDriverError::InternalMsg(format!("Trying to add the tag {} which has a malformed digest", tag.name)))?;
 
         // validate the date of the push
         if tag.pushed_at == 0 {
-            return Err(StorageDriverError::new("Tag 'pushed_at' field is empty"));
+            return Err(StorageDriverError::InternalMsg("Tag 'pushed_at' field is empty".to_string()));
         }
 
         // if we got here it's safe to add the tag

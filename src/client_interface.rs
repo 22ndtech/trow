@@ -9,15 +9,15 @@ use trow_proto::{
     ManifestHistoryRequest, ManifestRef, MetricsRequest, ReadinessRequest, UploadRef,
     UploadRequest, VerifyManifestRequest,
 };
-use crate::registry_interface::manifest::Manifest;
+use crate::registry_interface::{digest::DigestAlgorithm};
 
 use tonic::{Code, Request};
 
-use crate::{chrono::TimeZone, registry_interface::{BlobStorage, ManifestStorage, RegistryStorage, StorageDriverError, TagStorage}};
+use crate::{chrono::TimeZone, registry_interface::{BlobStorage, ManifestStorage, RegistryStorage, StorageDriverError, TagStorage, digest::Digest as if_digest}};
 use crate::types::{self, *};
 use failure::Error;
 use serde_json::Value;
-use std::convert::TryInto;
+use std::{str::FromStr, convert::TryInto};
 use std::fs::OpenOptions;
 use std::io;
 use std::io::prelude::*;
@@ -103,17 +103,36 @@ impl ManifestStorage for ClientInterface {
         let mut rt = Runtime::new().unwrap();
         let rn = RepoName(name.to_string());
         let f = self.get_reader_for_manifest(&rn, tag);
-        let mr = rt.block_on(f).map_err(|e| StorageDriverError{details: format!("{:?}", e)})?;
+        let mr = rt.block_on(f).map_err(|e| {
+            warn!("Error getting manifest {:?}", e);
+            StorageDriverError::Internal
+        })?;
 
         Ok(mr)
     }
 
-    fn store_manifest(&self, name: &str, tag: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, hash: &str, data: &[u8]) -> Result<(), StorageDriverError> {
-        todo!()
-    }
+    fn store_manifest(&self, name: &str, tag: &str, data: &mut Box<dyn Read>) -> Result<if_digest, StorageDriverError> {
+        
+        let repo = RepoName(name.to_string());
 
-    fn store_manifest_with_writer(&self, name: &str, tag: &str) -> Result<Box<dyn Write>, StorageDriverError> {
-        todo!()
+        let mut rt = Runtime::new().unwrap();
+        match rt.block_on(self.upload_manifest(&repo, &tag, data)) {
+
+            Ok(vm) => {
+
+                let mut iter = vm.digest().0.split(":");
+                let algo = DigestAlgorithm::from_str(iter.next().unwrap_or("sha256")).unwrap_or(DigestAlgorithm::Sha256);
+                let hash = iter.next().ok_or_else( || {
+                    warn!("Error decoding digest: {}", vm.digest());
+                    StorageDriverError::Internal
+                }
+                )?.to_string();
+                Ok(if_digest {algo, hash})
+            }
+            Err(RegistryError::InvalidName) => Err(StorageDriverError::InvalidName(format!("{}:{}", name, tag))),
+            Err(RegistryError::InvalidManifest) => Err(StorageDriverError::InvalidManifest),
+            Err(_) => Err(StorageDriverError::Internal),
+        }
     }
 
     fn delete_manifest(&self, name: &str, reference: &str, digest: Option<crate::registry_interface::digest::Digest>) -> Result<(), StorageDriverError> {
@@ -562,8 +581,7 @@ impl ClientInterface {
         let vm = create_verified_manifest(
             repo_name.clone(),
             Digest(resp.digest.to_owned()),
-            reference.to_string(),
-            resp.content_type,
+            reference.to_string()
         );
         Ok(vm)
     }

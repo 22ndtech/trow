@@ -1,4 +1,4 @@
-use crate::{client_interface::ClientInterface, client_interface::RegistryError, registry_interface::ManifestStorage};
+use crate::{client_interface::ClientInterface, client_interface::RegistryError, registry_interface::{ManifestStorage, StorageDriverError}};
 use crate::response::authenticate::Authenticate;
 use crate::response::errors::Error;
 use crate::response::html::HTML;
@@ -696,17 +696,18 @@ fn put_image_manifest(
     reference: String,
     chunk: rocket::data::Data,
 ) -> Result<VerifiedManifest, Error> {
-    let rn = repo_name.clone();
-    let repo = RepoName(repo_name);
-
-    let mut rt = Runtime::new().unwrap();
+   
     let mut data: Box<dyn Read> = Box::new(chunk.open());
-    match rt.block_on(ci.upload_manifest(&repo, &reference, &mut data)) {
-        Ok(vm) => Ok(vm),
-        Err(RegistryError::InvalidName) => Err(Error::NameInvalid(rn)),
-        Err(RegistryError::InvalidManifest) => Err(Error::ManifestInvalid),
+
+    match ci.store_manifest(&repo_name, &reference, &mut data) {
+        Ok(digest) => {
+            Ok(create_verified_manifest(RepoName(repo_name), Digest(format!("{}", digest)), reference))
+        },
+        Err(StorageDriverError::InvalidName(name)) => Err(Error::NameInvalid(name)),
+        Err(StorageDriverError::InvalidManifest) => Err(Error::ManifestInvalid),
         Err(_) => Err(Error::InternalError),
     }
+   
 }
 
 /*
