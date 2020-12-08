@@ -227,7 +227,7 @@ impl BlobStorage for ClientInterface {
     
         let mut rt = Runtime::new().unwrap();
 
-        rt.block_on(self.complete_upload2(name, session_id, &digest))
+        rt.block_on(self.complete_upload(name, session_id, &digest))
 
             .map_err(|e| {
                 match e.downcast::<tonic::Status>() {
@@ -258,8 +258,16 @@ impl BlobStorage for ClientInterface {
         })
     }
 
-    fn delete_blob(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> Result<(), StorageDriverError> {
-        todo!()
+    fn delete_blob(&self, name: &str, digest: &if_digest) -> Result<(), StorageDriverError> {
+        
+        info!("Attempting to delete blob {} in {}", digest, name);
+        let rn = RepoName(name.to_string());
+        let dig = Digest(digest.to_string());
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(self.delete_blob_local(&rn, &dig)).map_err(|_| {
+            StorageDriverError::InvalidDigest
+        })?;
+        Ok(())
     }
     
     fn status_blob_upload(&self, name: &str, session_id: &str) -> crate::registry_interface::file::FileInfo {
@@ -316,87 +324,7 @@ impl ClientInterface {
         Ok(response.uuid)
     }
 
-    pub async fn upload_blob<'a>(
-        &self,
-        repo_name: &RepoName,
-        uuid: &Uuid,
-        digest: &str,
-        blob: &mut Box<dyn Read + 'a>,
-    ) -> Result<AcceptedUpload, RegistryError> {
-        let mut sink = self
-            .get_write_sink_for_upload(repo_name, &uuid)
-            .await
-            .map_err(|e| {
-                warn!("Error finding write sink for blob {:?}", e);
-                RegistryError::InvalidNameOrUUID
-            })?;
-        let len = io::copy(blob, &mut sink).map_err(|e| {
-            warn!("Error writing blob {:?}", e);
-            RegistryError::Internal
-        })?;
-        let digest = Digest(digest.to_string());
-        self.complete_upload(repo_name, uuid, &digest, len)
-            .await
-            .map_err(|e| {
-                warn!("Error finalising upload {:?}", e);
-                RegistryError::Internal
-            })
-    }
-
-    pub async fn upload_blob_chunk<'a>(
-        &self,
-        repo_name: &RepoName,
-        uuid: &Uuid,
-        info: Option<ContentInfo>,
-        chunk: &mut Box<dyn Read + 'a>,
-    ) -> Result<UploadInfo, RegistryError> {
-        let mut sink = self
-            .get_write_sink_for_upload(repo_name, &uuid)
-            .await
-            .map_err(|e| {
-                warn!("Error finding write sink for blob {:?}", e);
-                RegistryError::InvalidNameOrUUID
-            })?;
-
-        let have_chunked_upload = info.is_some();
-        let info = info.unwrap_or(ContentInfo {
-            length: 0,
-            range: (0, 0),
-        });
-
-        let start_index = sink.stream_len().unwrap_or(0);
-        if start_index != info.range.0 {
-            warn!(
-                "Asked for blob upload with invalid start index. Expected {} got {}",
-                start_index, info.range.0
-            );
-            return Err(RegistryError::InvalidContentRange);
-        }
-
-        let len = io::copy(chunk, &mut sink).map_err(|e| {
-            warn!("Error writing blob {:?}", e);
-            RegistryError::Internal
-        })?;
-        let total = sink.stream_len().unwrap_or(len);
-        if have_chunked_upload {
-            if (info.range.1 + 1) != total {
-                warn!("total {} r + 1 {}", total, info.range.1 + 1 + 1);
-                return Err(RegistryError::InvalidContentRange);
-            }
-            //Check length if chunked upload
-            if info.length != len {
-                warn!("info.length {} len {}", info.length, len);
-                return Err(RegistryError::InvalidContentRange);
-            }
-        }
-        Ok(create_upload_info(
-            uuid.clone(),
-            repo_name.clone(),
-            (0, total as u32),
-        ))
-    }
-
-    async fn complete_upload2(
+    async fn complete_upload(
         &self,
         repo_name: &str,
         uuid: &str,
@@ -423,36 +351,6 @@ impl ClientInterface {
         Ok(())
     }
     
-    async fn complete_upload(
-        &self,
-        repo_name: &RepoName,
-        uuid: &Uuid,
-        digest: &Digest,
-        len: u64,
-    ) -> Result<AcceptedUpload, Error> {
-        info!(
-            "Complete Upload called for repository {} with upload id {} digest {} and length {}",
-            repo_name, uuid, digest, len
-        );
-        let req = CompleteRequest {
-            repo_name: repo_name.0.clone(),
-            uuid: uuid.0.clone(),
-            user_digest: digest.0.clone(),
-        };
-        let resp = self
-            .connect_registry()
-            .await?
-            .complete_upload(Request::new(req))
-            .await?
-            .into_inner();
-
-        Ok(create_accepted_upload(
-            Digest(resp.digest),
-            repo_name.clone(),
-            uuid.clone(),
-            (0, (len as u32)),
-        ))
-    }
 
     async fn get_write_sink_for_upload(
         &self,
@@ -642,7 +540,8 @@ impl ClientInterface {
         Ok(reader)
     }
 
-    pub async fn delete_blob(
+    
+    async fn delete_blob_local(
         &self,
         repo_name: &RepoName,
         digest: &Digest,

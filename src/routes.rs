@@ -848,13 +848,14 @@ fn delete_blob(
     repo: String,
     digest: String,
 ) -> Result<BlobDeleted, Error> {
-    let repo = RepoName(repo);
-    let digest = Digest(digest);
-    let r = ci.delete_blob(&repo, &digest);
-    Runtime::new()
-        .unwrap()
-        .block_on(r)
-        .map_err(|_| Error::BlobUnknown)
+    
+    let digest = if_digest::parse(&digest).map_err(
+        |e| Error::DigestInvalid
+    )?;
+    ci.delete_blob(&repo, &digest).map_err(|_| {
+        Error::BlobUnknown
+    })?;
+    Ok(BlobDeleted {} )
 }
 
 #[delete("/v2/<user>/<repo>/blobs/<digest>")]

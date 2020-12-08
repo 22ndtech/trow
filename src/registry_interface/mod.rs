@@ -105,7 +105,7 @@ pub trait BlobStorage {
 
     /// Delete the blob identified by name and digest
     /// DELETE: /v2/<name>/blobs/<digest>
-    fn delete_blob(&self, name: &str, algo: &DigestAlgorithm, reference: &str) -> Result<()>;
+    fn delete_blob(&self, name: &str, digest: &Digest) -> Result<()>;
 
     /// Requests to start a resumable upload for the given repository.
     /// Returns a session identifier for the upload.
