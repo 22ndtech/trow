@@ -1,4 +1,4 @@
-use crate::{registry_interface::manifest::Manifest, types::ManifestReader};
+use crate::{registry_interface::manifest::Manifest, types::{BlobReader, ContentInfo, ManifestReader}};
 use crate::registry_interface::file::FileInfo;
 use crate::registry_interface::digest::{DigestAlgorithm, Digest};
 use std::io::{Read, Write};
@@ -28,8 +28,14 @@ pub enum StorageDriverError {
     InvalidName(String),
     #[error("manifest is not valid")]
     InvalidManifest,
+    #[error("Digest did not match content")]
+    InvalidDigest,
     #[error("Internal storage error `{0}`")]
     InternalMsg(String),
+    #[error("Unsupported Operation")]
+    Unsupported,
+    #[error("Requested index does not match actual")]
+    InvalidContentRange,
     #[error("Internal storage error")]
     Internal,
 }
@@ -85,7 +91,7 @@ pub trait ManifestStorage {
 
     /// Delete the manifest identified by name and reference. Note that a manifest can only be deleted by digest.
     /// DELETE: /v2/<name>/manifests/<reference>
-    fn delete_manifest(&self, name: &str, reference: &str, digest: Option<Digest>) -> Result<()>;
+    fn delete_manifest(&self, name: &str, digest: &Digest) -> Result<()>;
 
     /// Whether the specific manifest exists
     fn has_manifest(&self, name: &str, algo: &DigestAlgorithm, reference: &str) -> bool;
@@ -95,17 +101,15 @@ pub trait BlobStorage {
     /// Retrieve the blob from the registry identified by digest.
     /// A HEAD request can also be issued to this endpoint to obtain resource information without receiving all data.
     /// GET: /v2/<name>/blobs/<digest>
-    fn get_blob(&self, name: &str, algo: &DigestAlgorithm, reference: &str) -> Result<Vec<u8>>;
+    fn get_blob(&self, name: &str, digest: &Digest) -> Result<BlobReader>;
 
     /// Delete the blob identified by name and digest
     /// DELETE: /v2/<name>/blobs/<digest>
     fn delete_blob(&self, name: &str, algo: &DigestAlgorithm, reference: &str) -> Result<()>;
 
-    /// Initiate a resumable blob upload
-    /// If successful, an upload location will be provided to complete the upload.
-    /// Optionally, if the digest parameter is present, the request body will be used to complete the upload in a single request.
-    /// POST: /v2/<name>/blobs/uploads/
-    fn start_blob_upload(&self, name: &str, session_id: &str) -> Result<()>;
+    /// Requests to start a resumable upload for the given repository.
+    /// Returns a session identifier for the upload.
+    fn start_blob_upload(&self, name: &str) -> Result<String>;
 
     /// Retrieve status of upload identified by session_id.
     /// The primary purpose of this endpoint is to resolve the current status of a resumable upload.
@@ -116,23 +120,14 @@ pub trait BlobStorage {
     /// PATCH: /v2/<name>/blobs/uploads/<session_id>
     /// This method has the session_id as a parameter because at this point we don't know the final
     /// file name. So the data needs to be appended to a temporary file/location with the session_id
-    /// as its identifier
-    fn store_blob(&self, name: &str, session_id: &str, data: &[u8]) -> Result<()>;
+    /// as its identifier.
+    /// Passed optional ContentInfo which describes range of data.
+    /// Returns current size of blob, including any previous chunks
+    fn store_blob_chunk(&self, name: &str, session_id: &str, data_info: Option<ContentInfo>, data: &mut Box<dyn Read>) -> Result<u64>;
 
-
-    /// If the driver supports streaming then the service uses this trait method to get back a Write
-    /// Trait (a File or a TcpStream fir example) and will push data to the stream (Write) so that
-    /// the Registry does not have to buffer in memory all the chunks and instead it just forwards them to the
-    /// driver
-    fn store_blob_with_writer(&self, _name: &str, session_id: &str) -> Result<Box<dyn Write>>;
-
-    /// Complete the upload specified by session_id, optionally appending the body as the final chunk.
-    /// PUT: /v2/<name>/blobs/uploads/<session_id>
-    /// In this case we need both the session id and the digest because we need to move/rename
-    /// the session_id temporary file/location to the final one which is supposed to have the
-    /// digest as its identifier (file name or location id)
-    /// Returns the bytes of the final file, necessary to verify the digest
-    fn end_blob_upload(&self, name: &str, session_id: &str, algo: &DigestAlgorithm, reference: &str) -> Result<Vec<u8>>;
+    /// Finalises the upload of the given session_id.
+    /// Also verfies uploaded blob matches user digest
+    fn complete_and_verify_blob_upload(&self, name: &str, session_id: &str, digest: &Digest) -> Result<()>;
 
     /// Cancel outstanding upload processes, releasing associated resources.
     /// If this is not called, the unfinished uploads will eventually timeout.

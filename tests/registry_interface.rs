@@ -93,7 +93,7 @@ mod interface_tests {
 
     async fn get_non_existent_blob(cl: &reqwest::Client) {
         let resp = cl
-            .get(&(TROW_ADDRESS.to_owned() + "/v2/test/test/blobs/not-an-entry"))
+            .get(&(TROW_ADDRESS.to_owned() + "/v2/test/test/blobs/sha256:baadf00d"))
             .send()
             .await
             .unwrap();
@@ -412,6 +412,8 @@ mod interface_tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let body = resp.text().await.unwrap();
+
+        println!("testout {}", body);
 
         assert!(body.contains("available_space"));
         assert!(body.contains("free_space"));

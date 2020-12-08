@@ -64,7 +64,9 @@ pub enum RegistryError {
     InvalidNameOrUUID,
     #[fail(display = "Invalid manifest")]
     InvalidManifest,
-    #[fail(display = "Internal Error")]
+    #[fail(display = "Invalid Range")]
+    InvalidDigest,
+    #[fail(display = "Digest does not match content")]
     InvalidContentRange,
     #[fail(display = "Internal Error")]
     Internal,
@@ -135,8 +137,23 @@ impl ManifestStorage for ClientInterface {
         }
     }
 
-    fn delete_manifest(&self, name: &str, reference: &str, digest: Option<crate::registry_interface::digest::Digest>) -> Result<(), StorageDriverError> {
-        todo!()
+    fn delete_manifest(&self, name: &str, digest: &if_digest) -> Result<(), StorageDriverError> {
+        let repo = RepoName(name.to_string());
+        let digest = Digest(format!("{}",digest));
+        let r = self.delete_by_manifest(&repo, &digest);
+        Runtime::new().unwrap().block_on(r).map_err(|e| {
+            let e = e.downcast::<tonic::Status>();
+            if let Ok(ts) = e {
+                match ts.code() {
+                    Code::InvalidArgument => StorageDriverError::Unsupported,
+                    Code::NotFound => StorageDriverError::InvalidManifest,
+                    _ => StorageDriverError::Internal,
+                }
+            } else {
+                StorageDriverError::Internal
+            }
+        })?;
+        Ok(())
     }
 
     fn has_manifest(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> bool {
@@ -145,31 +162,107 @@ impl ManifestStorage for ClientInterface {
 }
 
 impl BlobStorage for ClientInterface {
-    fn get_blob(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> Result<Vec<u8>, StorageDriverError> {
-        todo!()
+
+    fn get_blob(&self, name: &str, digest: &if_digest) -> Result<BlobReader, StorageDriverError> {
+        let mut rt = Runtime::new().unwrap();
+        let rn = RepoName(name.to_string());
+        let digest = Digest(format!("{}", digest).to_string());
+        let f = self.get_reader_for_blob(&rn, &digest);
+        let br = rt.block_on(f).map_err(|e| {
+            warn!("Error getting manifest {:?}", e);
+            StorageDriverError::Internal
+        })?;
+
+        Ok(br)
+    }
+
+    fn store_blob_chunk(&self, name: &str, session_id: &str, data_info: Option<ContentInfo>, data: &mut Box<dyn Read>) -> Result<u64, StorageDriverError> {
+        
+        let mut rt = Runtime::new().unwrap();
+        let rn = RepoName(name.to_string());
+        let uuid = Uuid(session_id.to_string());
+        let f = self
+            .get_write_sink_for_upload(&rn, &uuid);
+        let mut sink = rt.block_on(f).map_err(|e| {
+                warn!("Error finding write sink for blob {:?}", e);
+                StorageDriverError::InvalidName(format!("{} {}", name, session_id))})?;
+
+        let have_range = data_info.is_some();
+        let info = data_info.unwrap_or(ContentInfo {
+            length: 0,
+            range: (0, 0),
+        });
+
+        let start_index = sink.stream_len().unwrap_or(0);
+        if have_range && (start_index != info.range.0) {
+            warn!(
+                "Asked to store blob with invalid start index. Expected {} got {}",
+                start_index, info.range.0
+            );
+            return Err(StorageDriverError::InvalidContentRange);
+        }
+
+        let len = io::copy(data, &mut sink).map_err(|e| {
+            warn!("Error writing blob {:?}", e);
+            StorageDriverError::Internal
+        })?;
+
+        let total = sink.stream_len().unwrap_or(len);
+        if have_range {
+            if (info.range.1 + 1) != total {
+                warn!("total {} r + 1 {}", total, info.range.1 + 1 + 1);
+                return Err(StorageDriverError::InvalidContentRange);
+            }
+            //Check length if chunked upload
+            if info.length != len {
+                warn!("info.length {} len {}", info.length, len);
+                return Err(StorageDriverError::InvalidContentRange);
+            }
+        }
+        Ok(total)
+    }
+
+
+    fn complete_and_verify_blob_upload(&self, name: &str, session_id: &str, digest: &if_digest) -> Result<(), StorageDriverError> {
+    
+        let mut rt = Runtime::new().unwrap();
+
+        rt.block_on(self.complete_upload2(name, session_id, &digest))
+
+            .map_err(|e| {
+                match e.downcast::<tonic::Status>() {
+                    Ok(ts) => {
+                        match ts.code() {
+                            Code::InvalidArgument => StorageDriverError::InvalidDigest,
+                            _ => StorageDriverError::Internal,
+                        }
+                    },
+                    Err(e) => {
+                        warn!("Error finalising upload {:?}", e);
+                        StorageDriverError::Internal
+                    }
+                }
+            })?;
+        Ok(())
+    }
+
+    fn start_blob_upload(&self, name: &str) -> Result<String, StorageDriverError> {
+        
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(self.request_upload(name)).map_err(|e| {
+                
+            match e.downcast::<tonic::Status>().map(|s|s.code()) {
+                Ok(Code::InvalidArgument) => StorageDriverError::InvalidName(name.to_string()),
+                _ => StorageDriverError::Internal
+            }
+        })
     }
 
     fn delete_blob(&self, name: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> Result<(), StorageDriverError> {
         todo!()
     }
-
-    fn start_blob_upload(&self, name: &str, session_id: &str) -> Result<(), StorageDriverError> {
-        todo!()
-    }
-
+    
     fn status_blob_upload(&self, name: &str, session_id: &str) -> crate::registry_interface::file::FileInfo {
-        todo!()
-    }
-
-    fn store_blob(&self, name: &str, session_id: &str, data: &[u8]) -> Result<(), StorageDriverError> {
-        todo!()
-    }
-
-    fn store_blob_with_writer(&self, _name: &str, session_id: &str) -> Result<Box<dyn Write>, StorageDriverError> {
-        todo!()
-    }
-
-    fn end_blob_upload(&self, name: &str, session_id: &str, algo: &crate::registry_interface::digest::DigestAlgorithm, reference: &str) -> Result<Vec<u8>, StorageDriverError> {
         todo!()
     }
 
@@ -206,19 +299,11 @@ impl ClientInterface {
         x
     }
 
-    /**
-     * Ok so these functions are largely boilerplate to call the GRPC backend.
-     * But doing it here lets us change things behind the scenes much cleaner.
-     *
-     * Frontend code becomes smaller and doesn't need to know about GRPC types.
-     * In fact you could pull it out for a different implementation now by
-     * just changing this file...
-     **/
+    async fn request_upload(&self, repo_name: &str) -> Result<String, Error> {
 
-    pub async fn request_upload(&self, repo_name: &RepoName) -> Result<UploadInfo, Error> {
         info!("Request Upload called for {}", repo_name);
         let req = UploadRequest {
-            repo_name: repo_name.0.clone(),
+            repo_name: repo_name.to_string(),
         };
 
         let response = self
@@ -227,12 +312,8 @@ impl ClientInterface {
             .request_upload(Request::new(req))
             .await?
             .into_inner();
-
-        Ok(create_upload_info(
-            types::Uuid(response.uuid),
-            repo_name.clone(),
-            (0, 0),
-        ))
+        
+        Ok(response.uuid)
     }
 
     pub async fn upload_blob<'a>(
@@ -315,6 +396,33 @@ impl ClientInterface {
         ))
     }
 
+    async fn complete_upload2(
+        &self,
+        repo_name: &str,
+        uuid: &str,
+        digest: &if_digest,
+    ) -> Result<(), Error> {
+
+        info!(
+            "Complete Upload called for repository {} with upload id {} digest {}",
+            repo_name, uuid, digest
+        );
+
+        let req = CompleteRequest {
+            repo_name: repo_name.to_string(),
+            uuid: uuid.to_string(),
+            user_digest: digest.to_string(),
+        };
+
+        self
+            .connect_registry()
+            .await?
+            .complete_upload(Request::new(req))
+            .await?;
+
+        Ok(())
+    }
+    
     async fn complete_upload(
         &self,
         repo_name: &RepoName,
@@ -586,7 +694,7 @@ impl ClientInterface {
         Ok(vm)
     }
 
-    pub async fn delete_manifest(
+    async fn delete_by_manifest(
         &self,
         repo_name: &RepoName,
         digest: &Digest,
